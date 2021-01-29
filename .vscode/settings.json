@@ -1,0 +1,14 @@
+{
+  "editor.defaultFormatter": "denoland.vscode-deno",
+  "eslint.alwaysShowStatus": true,
+  "editor.formatOnSave": true,
+  "deno.enable": true,
+  "deno.unstable": true,
+  "deno.lint": true,
+  "deno.import_intellisense_origins": {
+    "https://deno.land": true
+  },
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  }
+}
