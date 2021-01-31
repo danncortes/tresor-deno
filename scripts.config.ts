@@ -6,6 +6,9 @@ const config: DenonConfig = {
       cmd: "Deno run --allow-net --allow-read --unstable mod.ts",
       desc: "run my mod.ts file",
     },
+    docker: {
+      cmd: "docker run --name mongo -p 27017:27017 -d mongo",
+    },
   },
 };
 

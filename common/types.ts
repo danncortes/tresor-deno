@@ -1,5 +1,5 @@
 import { UserCompact } from "../services/user/types.ts";
-export { AlgorithmInput } from "https://deno.land/x/djwt@v2.0/algorithm.ts";
+export type { AlgorithmInput } from "https://deno.land/x/djwt@v2.0/algorithm.ts";
 
 export interface BodyResponseBase {
   message: string;

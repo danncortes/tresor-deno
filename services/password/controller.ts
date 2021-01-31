@@ -1,6 +1,10 @@
 import { bcrypt, Bson, config, jwt, log } from "../../deps.ts";
 import { Password as PasswordI } from "./types.ts";
-import { BodyResponseCl, BodyResponseEmailCl } from "../../common/types.ts";
+import {
+  AlgorithmInput,
+  BodyResponseCl,
+  BodyResponseEmailCl,
+} from "../../common/types.ts";
 import Password from "./model.ts";
 import User from "../user/model.ts";
 import ee from "../events/user.ts";
@@ -9,6 +13,7 @@ import { createToken } from "../../common/helpers.ts";
 import { Events } from "../events/types.ts";
 
 const { CIPHER_PASS } = config();
+const JWT_ALG = config().JWT_ALG as AlgorithmInput;
 
 // deno-lint-ignore no-explicit-any
 const forgotPassword = async (ctx: any) => {
@@ -34,7 +39,7 @@ const forgotPassword = async (ctx: any) => {
 const verifyPassword = async (ctx: any) => {
   const { token } = await ctx.request.body({ type: "json" }).value;
   try {
-    await jwt.verify(token, `${CIPHER_PASS}`, "HS512");
+    await jwt.verify(token, `${CIPHER_PASS}`, JWT_ALG);
     const password = await Password.findOne({ token });
     if (password) {
       const body = new BodyResponseEmailCl(
@@ -45,7 +50,7 @@ const verifyPassword = async (ctx: any) => {
       ctx.response.body = body;
       ctx.response.status = body.status;
     } else {
-      ctx.response.status = 400;
+      throw new Error();
     }
   } catch (e) {
     ctx.response.status = 400;
@@ -54,12 +59,25 @@ const verifyPassword = async (ctx: any) => {
 
 // deno-lint-ignore no-explicit-any
 const resetPassword = async (ctx: any) => {
+  const { password, email, token } = await ctx.request.body({ type: "json" })
+    .value;
   try {
-    await console.log();
+    await jwt.verify(token, `${CIPHER_PASS}`, JWT_ALG);
+    const passwordFound = await Password.findOne({ email });
+
+    if (passwordFound) {
+      User.updateOne(
+        { email },
+        { $set: { password } },
+      );
+      const body = new BodyResponseCl(203, "Password Reseted");
+      ctx.response.body = body;
+      ctx.response.status = body.status;
+    } else {
+      throw new Error();
+    }
   } catch (e) {
-    const body = new BodyResponseCl(400, "Error Creating Token");
-    ctx.response.body = body;
-    ctx.response.status = body.status;
+    ctx.response.status = 400;
   }
 };
 
