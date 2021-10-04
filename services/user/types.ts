@@ -12,6 +12,8 @@ export interface User {
   masterp: string;
   tokens: Token[];
   verified: boolean;
+  forgotPasswordToken?: string;
+  verificationToken?: string;
 }
 
 export interface UserCompact {

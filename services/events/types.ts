@@ -1,6 +1,5 @@
 export enum Events {
-  UserCreated = "UserCreated",
-  AccountVerified = "AccountVerified",
+  UserDeleted = "UserDeleted",
 }
 
 export interface Event {

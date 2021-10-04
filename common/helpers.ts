@@ -1,8 +1,9 @@
-import { config, jwt } from "../deps.ts";
+import { bcrypt, Bson, config, jwt } from "../deps.ts";
 const { CIPHER_PASS, JWT_ALG } = config();
 
-// deno-lint-ignore no-explicit-any
-export const createToken = async (prop: any) => {
+export const createToken = async (
+  prop: { email?: string; _id?: Bson.ObjectID },
+): Promise<string> => {
   // 15 min
   const min = 900000;
   const expDate = new Date();
@@ -13,4 +14,9 @@ export const createToken = async (prop: any) => {
     { ...prop, exp },
     CIPHER_PASS,
   );
+};
+
+export const encryptPass = async (password: string): Promise<string> => {
+  const salt = await bcrypt.genSalt(8);
+  return await bcrypt.hash(password, salt);
 };

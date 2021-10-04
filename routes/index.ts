@@ -1,5 +1,4 @@
 import userRouter from "../services/user/routes.ts";
-import accountRouter from "../services/account/routes.ts";
-import passwordRouter from "../services/password/routes.ts";
+import credentialRouter from "../services/credential/routes.ts";
 
-export const routers = [userRouter, accountRouter, passwordRouter];
+export const routers = [userRouter, credentialRouter];

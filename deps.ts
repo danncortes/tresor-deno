@@ -7,3 +7,5 @@ export * as jwt from "https://deno.land/x/djwt@v2.1/mod.ts";
 export { config } from "https://deno.land/x/dotenv/mod.ts";
 import EventEmitter from "https://deno.land/x/events@v1.0.0/mod.ts";
 export default EventEmitter;
+export { AES } from "https://deno.land/x/god_crypto/aes.ts";
+export { encode } from "https://deno.land/x/god_crypto/mod.ts";

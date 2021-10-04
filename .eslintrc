@@ -1,0 +1,19 @@
+{
+  "extends": "standard",
+  "env": {
+    "browser": true,
+    "deno": true,
+    "jest": true
+  },
+  "rules": {
+    "semi":["error", "always"],
+    "camelcase":"error",
+    "comma-dangle":"off",
+    "indent":["error", 2],
+    "prefer-const": ["error", {
+      "destructuring": "any",
+      "ignoreReadBeforeAssign": false
+    }],
+    "no-explicit-any": "off"
+  }
+}

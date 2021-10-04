@@ -1,16 +1,20 @@
-import { bcrypt, Bson, log } from "../../deps.ts";
+import { bcrypt, Bson, config, jwt, log } from "../../deps.ts";
 import { User as UserI, UserCompact } from "./types.ts";
 import {
+  AlgorithmInput,
   BodyResponseCl,
+  BodyResponseEmailCl,
   BodyResponseTokenCl,
   BodyResponseUserCl,
   BodyResponseUserCreatedCl,
 } from "../../common/types.ts";
 import User from "./model.ts";
-import ee from "../events/user.ts";
-import { createToken } from "../../common/helpers.ts";
+import { createToken, encryptPass } from "../../common/helpers.ts";
 
 import { Events } from "../events/types.ts";
+
+const { CIPHER_PASS } = config();
+const JWT_ALG = config().JWT_ALG as AlgorithmInput;
 
 const userCompact = (user: UserI): UserCompact => {
   return {
@@ -26,9 +30,8 @@ const createUser = async (ctx: any) => {
   try {
     let newUser: UserI = await ctx.request.body({ type: "json" }).value;
     const _id = new Bson.ObjectID();
-    const salt = await bcrypt.genSalt(8);
-    const password = await bcrypt.hash(newUser.password, salt);
-    const masterp = await bcrypt.hash(newUser.masterp, salt);
+    const password = await encryptPass(newUser.password);
+    const masterp = await encryptPass(newUser.masterp);
     const token = await createToken({ _id });
 
     newUser = {
@@ -38,13 +41,12 @@ const createUser = async (ctx: any) => {
       masterp,
       tokens: [{ token }],
       verified: false,
+      verificationToken: token,
     };
 
     await User.insertOne(newUser);
 
     const user = userCompact(newUser);
-
-    await ee.emit("user", { action: Events.UserCreated, data: user });
 
     //TODO send email
     const body = new BodyResponseUserCreatedCl(
@@ -109,10 +111,10 @@ const updateUser = async (ctx: any) => {
 
 // deno-lint-ignore no-explicit-any
 const loginUser = async (ctx: any) => {
-  const { email, password, masterp }: UserI = await ctx.request.body(
-    { type: "json" },
-  ).value;
   try {
+    const { email, password, masterp }: UserI = await ctx.request.body(
+      { type: "json" },
+    ).value;
     const user = await User.findOne({ email });
     if (!user) {
       throw new Error("Login Error");
@@ -144,8 +146,8 @@ const loginUser = async (ctx: any) => {
 
 // deno-lint-ignore no-explicit-any
 const findUser = (ctx: any) => {
-  const user = userCompact(ctx.state.user);
   try {
+    const user = userCompact(ctx.state.user);
     const body = new BodyResponseUserCl(200, "User Found", user);
     ctx.response.body = body;
     ctx.response.status = body.status;
@@ -158,9 +160,8 @@ const findUser = (ctx: any) => {
 
 // deno-lint-ignore no-explicit-any
 const logoutUser = async (ctx: any) => {
-  const { user, token } = await ctx.state;
-
   try {
+    const { user, token } = await ctx.state;
     // deno-lint-ignore no-explicit-any
     user.tokens = user.tokens.filter((tokn: any) => tokn.token !== token);
     await User.updateOne(
@@ -179,9 +180,8 @@ const logoutUser = async (ctx: any) => {
 
 // deno-lint-ignore no-explicit-any
 const logoutUserAll = async (ctx: any) => {
-  const { user } = await ctx.state;
-
   try {
+    const { user } = await ctx.state;
     user.tokens = [];
     await User.updateOne(
       { email: user.email },
@@ -200,8 +200,8 @@ const logoutUserAll = async (ctx: any) => {
 
 // deno-lint-ignore no-explicit-any
 const deleteUser = async (ctx: any) => {
-  const { user } = await ctx.state;
   try {
+    const { user } = await ctx.state;
     await User.deleteOne({ _id: user._id });
 
     //TODO delete credentials using an event
@@ -215,14 +215,184 @@ const deleteUser = async (ctx: any) => {
   }
 };
 
+// deno-lint-ignore no-explicit-any
+const verifyAccount = async (ctx: any) => {
+  try {
+    const { token } = await ctx.request.body({ type: "json" }).value;
+    await jwt.verify(token, `${CIPHER_PASS}`, JWT_ALG);
+    const user = await User.findOne({ verificationToken: token });
+    if (user) {
+      await User.updateOne(
+        { email: user.email },
+        { $set: { verified: true }, $unset: { verificationToken: "" } },
+      );
+      const body = new BodyResponseCl(200, "Account Verified");
+      ctx.response.body = body;
+      ctx.response.status = body.status;
+    } else {
+      throw new Error();
+    }
+  } catch (e) {
+    const body = new BodyResponseCl(400, "Error verifying account");
+    ctx.response.body = body;
+    ctx.response.status = body.status;
+  }
+};
+
+// deno-lint-ignore no-explicit-any
+const newVerificationToken = async (ctx: any) => {
+  try {
+    const { user, user: { _id } } = await ctx.state;
+    const token = await createToken({ _id });
+    await User.updateOne(
+      { email: user.email },
+      { $set: { verificationToken: token } },
+    );
+    const body = new BodyResponseCl(200, "Verification token created");
+    ctx.response.body = body;
+    ctx.response.status = body.status;
+  } catch (e) {
+    const body = new BodyResponseCl(400, "Error creating verification token");
+    ctx.response.body = body;
+    ctx.response.status = body.status;
+  }
+};
+
+// deno-lint-ignore no-explicit-any
+const forgotPassword = async (ctx: any) => {
+  try {
+    const { email } = await ctx.request.body({ type: "json" }).value;
+    const user = await User.findOne({ email });
+    if (user) {
+      const token = await createToken({ email });
+      await User.updateOne(
+        { email: user.email },
+        { $set: { forgotPasswordToken: token } },
+      );
+      // TODO Send Reset password email
+      ctx.response.status = 200;
+    } else {
+      throw new Error();
+    }
+  } catch (e) {
+    ctx.response.status = 403;
+  }
+};
+
+// deno-lint-ignore no-explicit-any
+const verifyPasswordToken = async (ctx: any) => {
+  try {
+    const { token } = await ctx.request.body({ type: "json" }).value;
+    await jwt.verify(token, `${CIPHER_PASS}`, JWT_ALG);
+    const user = await User.findOne({ forgotPasswordToken: token });
+    if (user) {
+      const body = new BodyResponseEmailCl(
+        200,
+        "Password Verified",
+        user.email,
+      );
+      ctx.response.body = body;
+      ctx.response.status = body.status;
+    } else {
+      throw new Error();
+    }
+  } catch (e) {
+    ctx.response.status = 403;
+  }
+};
+
+// deno-lint-ignore no-explicit-any
+const resetPassword = async (ctx: any) => {
+  try {
+    const { password, email, token } = await ctx.request.body({ type: "json" })
+      .value;
+    await jwt.verify(token, `${CIPHER_PASS}`, JWT_ALG);
+    const user = await User.findOne({ email });
+    const encryptedPass = await encryptPass(password);
+    if (user) {
+      await User.updateOne(
+        { email },
+        { $set: { password: encryptedPass, forgotPasswordToken: "" } },
+      );
+      const body = new BodyResponseCl(200, "Password Reseted");
+      ctx.response.body = body;
+      ctx.response.status = body.status;
+    } else {
+      throw new Error();
+    }
+  } catch (e) {
+    ctx.response.status = 403;
+  }
+};
+
+// deno-lint-ignore no-explicit-any
+const changePassword = async (ctx: any) => {
+  try {
+    const { currentPassword, newPassword } = await ctx.request.body(
+      { type: "json" },
+    )
+      .value;
+
+    const { user } = await ctx.state;
+    const match = await bcrypt.compare(currentPassword, user.password);
+    if (match) {
+      await User.updateOne(
+        { email: user.email },
+        {
+          $set: {
+            password: await encryptPass(newPassword),
+            tokens: [],
+          },
+        },
+      );
+
+      const body = new BodyResponseCl(200, "Password Updated");
+      ctx.response.body = body;
+      ctx.response.status = body.status;
+    } else {
+      throw new Error();
+    }
+  } catch (e) {
+    const body = new BodyResponseCl(403, "Error Updating Password");
+    ctx.response.body = body;
+    ctx.response.status = body.status;
+  }
+};
+
+// deno-lint-ignore no-explicit-any
+const checkPassword = async (ctx: any) => {
+  try {
+    const { password } = await ctx.request.body(
+      { type: "json" },
+    )
+      .value;
+    const { user } = await ctx.state;
+    const match = await bcrypt.compare(password, user.password);
+    if (match) {
+      ctx.response.status = 200;
+    } else {
+      throw new Error();
+    }
+  } catch (e) {
+    ctx.response.status = 403;
+  }
+};
+
 // TODO changeMasterKey
 
 export {
+  changePassword,
+  checkPassword,
   createUser,
   deleteUser,
   findUser,
+  forgotPassword,
   loginUser,
   logoutUser,
   logoutUserAll,
+  newVerificationToken,
+  resetPassword,
   updateUser,
+  verifyAccount,
+  verifyPasswordToken,
 };
